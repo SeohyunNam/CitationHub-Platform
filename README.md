@@ -86,7 +86,7 @@ reads the dataset as local Parquet files.
 - **pandas** + **pyarrow** – Parquet reading and search/aggregation
 - **DuckDB** – SQL queries over large Parquet files (citation events)
 - **networkx** – graph helpers
-- **PyTorch** + **Hugging Face Transformers** – frozen SciBERT encoder for Citation search
+- **PyTorch** + **Transformers** – frozen SciBERT encoder for Citation search
   (CPU inference; `backend/citation_search.py`)
 - **QLever** (in Docker) – SPARQL engine serving the RDF knowledge graph; the backend
   proxies read-only queries to it via `/api/sparql` (the QLever port stays internal)
@@ -161,10 +161,21 @@ Read from `$CITATIONHUB_DATA_DIR/eval_set/`:
 | `test_candidate_matrix.npy` | (events × 100) candidate seed papers, as row numbers of `seed_cited_papers_normalized.parquet` |
 | `reference_ranks.csv` | Optional. Reference ranks of the cited paper, shown next to the live ranks |
 
-The files are generated from the IDCite Parquet files by
-[`extract_candidates.py`](https://github.com/SeohyunNam/CitationHub-System/blob/main/scripts/extract_candidates.py)
+The files are generated from the IDCite Parquet files by `scripts/extract_candidates.py`
 (seed 42): one event per citing paper and intent, the cited paper plus 99 same-field seed
-papers. Without them the rest of the site works and the page shows a notice.
+papers. It needs `citation_events_enriched.parquet` and `seed_cited_papers_normalized.parquet`
+from IDCite (about 16 GB of RAM, a few minutes on CPU). Copy the generated
+`test_queries_1975.parquet` and `test_candidate_matrix.npy` into `eval_set/`:
+
+```bash
+python -I scripts/extract_candidates.py "$CITATIONHUB_DATA_DIR" /tmp/eval_out
+mkdir -p "$CITATIONHUB_DATA_DIR/eval_set"
+cp /tmp/eval_out/test_queries_1975.parquet /tmp/eval_out/test_candidate_matrix.npy "$CITATIONHUB_DATA_DIR/eval_set/"
+```
+
+The derivation, inputs and expected SHA-256 hashes are described in
+[docs/evaluation-dataset.md](docs/evaluation-dataset.md). Without these files the rest of the
+site works and the page shows a notice.
 
 ### Index
 
@@ -196,7 +207,10 @@ CitationHub-Platform/
 ├── scripts/
 │   ├── build_geo_points.py    # geocodes the dataset's cities via GeoNames
 │   ├── build_citation_search_index.py  # SciBERT vectors of all seed papers (Citation search)
-│   └── check_conditions.py    # prints Citation search ranks/scores under C1, C2, C3
+│   ├── check_conditions.py    # prints Citation search ranks/scores under C1, C2, C3
+│   └── extract_candidates.py  # generates the Citation search evaluation set from IDCite
+├── docs/
+│   └── evaluation-dataset.md  # how the evaluation set is derived and verified
 ├── frontend/
 │   ├── pages/
 │   │   ├── index.jsx          # Home (stats + search bar)
@@ -270,15 +284,6 @@ All responses are JSON unless noted.
 > `seed_paper_id` values can contain slashes (DOIs), so the routes use FastAPI's `:path`
 > converter.
 
-### Data source switch
-
-The backend chooses its data source based on environment variables:
-
-- If `HF_REPO_ID` is **empty** → reads local Parquet files from `CITATIONHUB_DATA_DIR`
-  (recommended).
-- If `HF_REPO_ID` is **set** → downloads the files from that Hugging Face dataset repository
-  (`HF_TOKEN` is needed if it is private).
-
 ---
 
 ## Data Files
@@ -286,10 +291,11 @@ The backend chooses its data source based on environment variables:
 ### Getting the data
 
 The dataset is not included in this repository. The code is published so the system can be
-inspected and reused; to run it you need the IDCite Parquet dataset. Then:
+inspected and reused; to run it you need the IDCite Parquet dataset, available from
+[Zenodo](https://doi.org/10.5281/zenodo.20796923). Then:
 
 1. Place the Parquet files below in a folder on the server that runs the backend.
-2. Set `CITATIONHUB_DATA_DIR` to that folder and leave `HF_REPO_ID` empty (see `.env.example`).
+2. Set `CITATIONHUB_DATA_DIR` to that folder (see `.env.example`).
 3. Build the SciBERT index with `scripts/build_citation_search_index.py` and, optionally, the
    Citation search evaluation set (see [Evaluation set](#evaluation-set)).
 
@@ -337,7 +343,6 @@ pip install -r requirements.txt
 
 # Point to a local folder containing the Parquet files
 export CITATIONHUB_DATA_DIR=/path/to/citationhub_data
-export HF_REPO_ID=                # leave empty to use local files
 uvicorn main:app --reload --port 8000
 ```
 

@@ -8,7 +8,7 @@ import SearchTabs from '../../components/SearchTabs'
 import { qstr } from '../../lib/searchQuery'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-const DOCS_URL = 'https://github.com/SeohyunNam/CitationHub-System/blob/main/docs/evaluation-dataset.md'
+const DOCS_URL = 'https://github.com/SeohyunNam/CitationHub-Platform/blob/main/docs/evaluation-dataset.md'
 
 // Query filled in when the page is opened without one: the full query of event 194
 // (Background), the default example, whose cited paper ranks C1 #31, C2 #1, C3 #1
