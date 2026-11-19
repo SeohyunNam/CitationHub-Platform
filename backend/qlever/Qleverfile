@@ -1,0 +1,39 @@
+# Qleverfile for CitationHub — use with the `qlever` control tool
+# https://github.com/qlever-dev/qlever-control
+#
+# Prerequisites:
+#   - Docker, and the control tool: pip install qlever
+#   - the knowledge-graph parquet files (kg_nodes, kg_edges) in $CITATIONHUB_DATA_DIR
+#
+# Setup (run from this directory):
+#   1) python ../rdf_convert.py --data-dir "$CITATIONHUB_DATA_DIR" --out citationhub.nt
+#   2) qlever index      # build the index
+#   3) qlever start      # start the SPARQL server on PORT below
+#
+# Quick test:
+#   curl -s http://localhost:7001 \
+#     -H "Accept: application/sparql-results+json" \
+#     --data-urlencode 'query=SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+
+[data]
+NAME         = citationhub
+DESCRIPTION  = CitationHub scholarly citation knowledge graph (seed papers, citing papers, citation events, intents, authors, journals, affiliations, geography, fields)
+
+[index]
+INPUT_FILES     = citationhub.nt
+CAT_INPUT_FILES = cat ${INPUT_FILES}
+SETTINGS_JSON   = { "languages-internal": [], "prefixes-external": [""], "locale": { "language": "en", "country": "US", "ignore-punctuation": true }, "ascii-prefixes-only": false, "num-triples-per-batch": 1000000, "parallel-parsing": true }
+
+[server]
+PORT               = 7001
+ACCESS_TOKEN       = CHANGE_ME_set_a_random_token
+MEMORY_FOR_QUERIES = 10G
+CACHE_MAX_SIZE     = 5G
+TIMEOUT            = 120s
+
+[runtime]
+SYSTEM = docker
+IMAGE  = docker.io/adfreiburg/qlever:latest
+
+[ui]
+PORT = 7000

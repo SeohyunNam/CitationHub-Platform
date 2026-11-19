@@ -1,0 +1,12 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+pandas>=2.0,<3
+pyarrow>=15.0
+duckdb>=0.10.0,<2
+huggingface_hub>=0.20.0,<2
+networkx>=3.0,<4
+python-dotenv>=1.0.0
+numpy>=1.24
+# Citation search (SciBERT encoder, CPU is enough)
+torch>=2.1
+transformers>=4.40,<5
