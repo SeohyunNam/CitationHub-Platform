@@ -177,6 +177,30 @@ The derivation, inputs and expected SHA-256 hashes are described in
 [docs/evaluation-dataset.md](docs/evaluation-dataset.md). Without these files the rest of the
 site works and the page shows a notice.
 
+### Ground-truth audit
+
+`scripts/audit/` checks the evaluation set and a deployed service. Each script writes CSV/JSON
+results to an output folder; only public paper identifiers are sent to external APIs.
+
+| Script | Check |
+|--------|-------|
+| `audit_openalex.py` | Whether each citing paper's [OpenAlex](https://openalex.org) reference list contains the cited paper (batch DOI lookup) |
+| `audit_openalex_retry.py` | Second pass with single-DOI lookups for events the batch lookup missed |
+| `audit_semanticscholar.py` | Same check against the [Semantic Scholar](https://www.semanticscholar.org) Graph API, plus whether its citation contexts match the event's context (random sample, seed 42) |
+| `leakage_subset.py` | Flags events whose context contains the cited paper's first-author surname or year, and compares C1/C2/C3 MRR on flagged and unflagged events (requires `scipy`) |
+| `verify_service.py` | Calls a deployed backend for every test event, compares the returned ranks with `reference_ranks.csv`, and records response times |
+
+```bash
+python -I scripts/audit/audit_openalex.py eval_out/test_queries_1975.parquet audit_out
+python -I scripts/audit/audit_openalex_retry.py audit_out
+python -I scripts/audit/audit_semanticscholar.py eval_out/test_queries_1975.parquet audit_out/openalex_audit.csv audit_out 300
+python -I scripts/audit/leakage_subset.py eval_out audit_out/leakage
+python -I scripts/audit/verify_service.py http://localhost:8000 eval_out/reference_ranks.csv audit_out/service
+```
+
+`eval_out` is the output folder of `extract_candidates.py`; `reference_ranks.csv` has the columns
+`citation_event_id`, `rank_C1`, `rank_C2`, `rank_C3`.
+
 ### Index
 
 `scripts/build_citation_search_index.py` writes `seed_scibert_embeddings.npy` (N × 768) and
@@ -208,7 +232,8 @@ CitationHub-Platform/
 │   ├── build_geo_points.py    # geocodes the dataset's cities via GeoNames
 │   ├── build_citation_search_index.py  # SciBERT vectors of all seed papers (Citation search)
 │   ├── check_conditions.py    # prints Citation search ranks/scores under C1, C2, C3
-│   └── extract_candidates.py  # generates the Citation search evaluation set from IDCite
+│   ├── extract_candidates.py  # generates the Citation search evaluation set from IDCite
+│   └── audit/                 # ground-truth audit (OpenAlex, Semantic Scholar, leakage, service check)
 ├── docs/
 │   └── evaluation-dataset.md  # how the evaluation set is derived and verified
 ├── frontend/
