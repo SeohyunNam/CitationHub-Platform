@@ -189,6 +189,7 @@ results to an output folder; only public paper identifiers are sent to external 
 | `audit_semanticscholar.py` | Same check against the [Semantic Scholar](https://www.semanticscholar.org) Graph API, plus whether its citation contexts match the event's context (random sample, seed 42) |
 | `leakage_subset.py` | Flags events whose context contains the cited paper's first-author surname or year, and compares C1/C2/C3 MRR on flagged and unflagged events (requires `scipy`) |
 | `verify_service.py` | Calls a deployed backend for every test event, compares the returned ranks with `reference_ranks.csv`, and records response times |
+| `verify_requirements.py` | Checks the Citation search requirements on a deployed backend with GET requests only (example events, title suggestions, intent and field filters, default condition, result list, citation contexts, candidate CSV, marking of the cited paper, data configuration, HTTPS) and reports pass or fail for each |
 
 ```bash
 python -I scripts/audit/audit_openalex.py eval_out/test_queries_1975.parquet audit_out
@@ -196,6 +197,7 @@ python -I scripts/audit/audit_openalex_retry.py audit_out
 python -I scripts/audit/audit_semanticscholar.py eval_out/test_queries_1975.parquet audit_out/openalex_audit.csv audit_out 300
 python -I scripts/audit/leakage_subset.py eval_out audit_out/leakage
 python -I scripts/audit/verify_service.py http://localhost:8000 eval_out/reference_ranks.csv audit_out/service
+python -I scripts/audit/verify_requirements.py http://localhost:8000 audit_out/requirements 194
 ```
 
 `eval_out` is the output folder of `extract_candidates.py`; `reference_ranks.csv` has the columns
