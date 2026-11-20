@@ -1,11 +1,16 @@
-"""Check the Citation search requirements of a deployed CitationHub backend.
+"""Check the functional requirements and the observable non-functional requirements of a
+deployed CitationHub backend.
 
-Each check sends GET requests only and records the evidence for one functional or
-non-functional requirement: example events (FR2), title suggestions (FR2), intent and field
-filters (FR3), partial versus full queries (FR1), the default condition (FR6), the ranks of
-the cited paper (FR7), the result list (FR8), the citation contexts of candidates (FR9), the
-event identifier and candidate CSV (FR10), the marking of the cited paper (NFR3), the data
-configuration (NFR5), and HTTPS (NFR7). Every check also reports whether it passed.
+Each check records the evidence for one requirement and whether it passed: partial versus
+full queries (FR1), example events and title suggestions (FR2), intent and field filters
+(FR3), the query (FR4), the candidate set (FR5), the default condition (FR6), the ranks of the
+cited paper (FR7), the result list (FR8), the citation contexts of candidates (FR9), the
+event identifier and candidate CSV (FR10), the paper detail and intent-filtered Citation
+Network of each result (FR11), the knowledge-graph subgraph of the cited paper (FR12), a
+counting query and an example SPARQL query (FR13), the marking of the cited paper (NFR3), the
+data configuration (NFR5), and HTTPS (NFR7). All requests are GET requests except two
+read-only SPARQL SELECT queries. NFR6 and NFR8 are checked on a separate instance with
+verify_isolated_instance.py; NFR1 and NFR4 with verify_service.py.
 
 Usage: python -I verify_requirements.py <API> <out_dir> [event_idx]
   <event_idx> is the test event used for the per-event checks (default 194).
@@ -120,6 +125,68 @@ marked_list = sum(1 for r in results if r.get("is_cited"))
 marked_csv = sum(1 for r in table if r.get("is_cited_target") == "1")
 checks["NFR3"] = {"marked_in_list": marked_list, "marked_in_csv": marked_csv,
                   "pass": marked_list <= 1 and marked_csv == 1}
+
+# FR11: the paper detail page and the intent-filtered Citation Network of each listed paper.
+# The interface links a result to /papers/<id> and to /network?paper_id=<id>&intents=<intent>,
+# which load these two endpoints.
+intent_q = query["intent"]
+linked = []
+for r in results:
+    pid = urllib.parse.quote(r["seed_paper_id"], safe="")
+    detail = get(f"/api/papers/{pid}")
+    network = get(f"/api/citing/{pid}?" + urllib.parse.urlencode({"intents": intent_q, "limit": 100}))
+    rows_n = network.get("results") or network.get("citing_papers") or []
+    intents_seen = {c.get("primary_intent") for c in rows_n if isinstance(c, dict)} - {None}
+    linked.append({"seed_paper_id": r["seed_paper_id"],
+                   "detail_ok": detail.get("paper", {}).get("seed_paper_id") == r["seed_paper_id"],
+                   "network_rows": len(rows_n), "network_intents": sorted(intents_seen)})
+checks["FR11"] = {"papers": len(linked), "detail_pages_ok": sum(x["detail_ok"] for x in linked),
+                  "networks_only_query_intent": all(set(x["network_intents"]) <= {intent_q} for x in linked),
+                  "pass": all(x["detail_ok"] for x in linked)
+                  and any(x["network_rows"] > 0 for x in linked)
+                  and all(set(x["network_intents"]) <= {intent_q} for x in linked)}
+
+# FR12: the knowledge-graph subgraph of the cited paper
+cited_id = event["cited"].get("seed_paper_id") or query.get("target_seed_id")
+kg = get(f"/api/kg/{urllib.parse.quote(cited_id, safe='')}")
+node_types = Counter(n.get("type") for n in kg.get("nodes", []))
+checks["FR12"] = {"seed_paper_id": cited_id, "nodes": len(kg.get("nodes", [])), "edges": len(kg.get("edges", [])),
+                  "node_types": dict(node_types),
+                  "pass": len(kg.get("nodes", [])) > 0 and len(kg.get("edges", [])) > 0
+                  and {"seed_paper", "citation_event", "intent"} <= set(node_types)}
+
+
+def sparql(text):
+    body = json.dumps({"query": text}).encode("utf-8")
+    req = urllib.request.Request(API + "/api/sparql", data=body, method="POST",
+                                 headers={**HEADERS, "Content-Type": "application/json"})
+    t0 = time.perf_counter()
+    with urllib.request.urlopen(req, timeout=120) as r:
+        out = json.loads(r.read())
+    return out, time.perf_counter() - t0
+
+
+# FR13: a counting query and an example query (read-only SELECT queries)
+count, count_s = sparql("SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }")
+n_triples = int(count["results"]["bindings"][0]["n"]["value"])
+example = ("PREFIX ch: <http://citationhub.org/ontology/>\n"
+           "SELECT ?intent (COUNT(?ev) AS ?events) WHERE {\n"
+           "  ?ev a ch:CitationEvent ;\n      ch:primaryIntent ?intent .\n}\n"
+           "GROUP BY ?intent\nORDER BY DESC(?events)")
+ex_out, ex_s = sparql(example)
+ex_rows = ex_out["results"]["bindings"]
+checks["FR13"] = {"triples": n_triples, "count_seconds": round(count_s, 2),
+                  "engine_ms": count.get("meta", {}).get("query-time-ms"),
+                  "example_rows": len(ex_rows), "example_seconds": round(ex_s, 2),
+                  "example_columns": ex_out["head"]["vars"],
+                  "pass": n_triples > 0 and len(ex_rows) > 0}
+
+# NFR2: the candidate matrix reported by the service equals the published one
+# (expected hash from docs/evaluation-dataset.md)
+EXPECTED_SHA256 = "e3d909d4b66033c3ace7a2335ee5112eb7f6e51aed6f65bdc5182a180012a810"
+test_meta = get("/api/citation-search/test/meta")
+checks["NFR2"] = {"reported": test_meta.get("matrix_sha256"), "expected": EXPECTED_SHA256,
+                  "pass": test_meta.get("matrix_sha256") == EXPECTED_SHA256}
 
 # NFR5: the service reads local Parquet files, not a remote dataset
 config = get("/api/debug")

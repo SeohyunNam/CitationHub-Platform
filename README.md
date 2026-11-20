@@ -189,7 +189,9 @@ results to an output folder; only public paper identifiers are sent to external 
 | `audit_semanticscholar.py` | Same check against the [Semantic Scholar](https://www.semanticscholar.org) Graph API, plus whether its citation contexts match the event's context (random sample, seed 42) |
 | `leakage_subset.py` | Flags events whose context contains the cited paper's first-author surname or year, and compares C1/C2/C3 MRR on flagged and unflagged events (requires `scipy`) |
 | `verify_service.py` | Calls a deployed backend for every test event, compares the returned ranks with `reference_ranks.csv`, and records response times |
-| `verify_requirements.py` | Checks the Citation search requirements on a deployed backend with GET requests only (example events, title suggestions, intent and field filters, default condition, result list, citation contexts, candidate CSV, marking of the cited paper, data configuration, HTTPS) and reports pass or fail for each |
+| `verify_requirements.py` | Checks the requirements observable on a deployed backend (FR1-FR13, NFR2, NFR3, NFR5, NFR7): example events, title suggestions, filters, the default condition, the result list, citation contexts, the candidate CSV, the paper detail and Citation Network links, the knowledge-graph subgraph, SPARQL counting and example queries, the matrix hash, and the data configuration. GET requests only, apart from two read-only SPARQL SELECT queries |
+| `verify_isolated_instance.py` | Checks availability and safe query access (NFR6, NFR8) on a separate local instance started without the evaluation set: citation search reports the missing set while other views respond, and modifying or oversized SPARQL queries are rejected. Refuses to run against a non-local host |
+| `inspect_code.py` | Inspects the source for NFR3, NFR4, NFR6, and NFR7: the example note, no GPU calls and precomputed seed vectors, background loading at start-up, and read-only, unauthenticated routes |
 
 ```bash
 python -I scripts/audit/audit_openalex.py eval_out/test_queries_1975.parquet audit_out
@@ -198,6 +200,8 @@ python -I scripts/audit/audit_semanticscholar.py eval_out/test_queries_1975.parq
 python -I scripts/audit/leakage_subset.py eval_out audit_out/leakage
 python -I scripts/audit/verify_service.py http://localhost:8000 eval_out/reference_ranks.csv audit_out/service
 python -I scripts/audit/verify_requirements.py http://localhost:8000 audit_out/requirements 194
+python -I scripts/audit/verify_isolated_instance.py http://127.0.0.1:8010 audit_out/isolated
+python -I scripts/audit/inspect_code.py . audit_out/inspection
 ```
 
 `eval_out` is the output folder of `extract_candidates.py`; `reference_ranks.csv` has the columns
