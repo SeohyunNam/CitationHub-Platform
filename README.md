@@ -15,6 +15,7 @@ and research fields. The UI is inspired by the CORE academic search experience.
 - [Tech Stack](#tech-stack)
 - [Features](#features)
 - [Citation Search](#citation-search)
+- [Requirements](docs/requirements.md)
 - [Project Structure](#project-structure)
 - [Backend API Reference](#backend-api-reference)
 - [Data Files](#data-files)
@@ -179,7 +180,8 @@ site works and the page shows a notice.
 
 ### Ground-truth audit
 
-`scripts/audit/` checks the evaluation set and a deployed service. Each script writes CSV/JSON
+`scripts/audit/` checks the ground truth of the evaluation set: whether each target is really
+cited by its citing paper, and whether contexts name the cited work. Each script writes CSV/JSON
 results to an output folder; only public paper identifiers are sent to external APIs.
 
 | Script | Check |
@@ -188,24 +190,39 @@ results to an output folder; only public paper identifiers are sent to external 
 | `audit_openalex_retry.py` | Second pass with single-DOI lookups for events the batch lookup missed |
 | `audit_semanticscholar.py` | Same check against the [Semantic Scholar](https://www.semanticscholar.org) Graph API, plus whether its citation contexts match the event's context (random sample, seed 42) |
 | `leakage_subset.py` | Flags events whose context contains the cited paper's first-author surname or year, and compares C1/C2/C3 MRR on flagged and unflagged events (requires `scipy`) |
-| `verify_service.py` | Calls a deployed backend for every test event, compares the returned ranks with `reference_ranks.csv`, and records response times |
-| `verify_requirements.py` | Checks the requirements observable on a deployed backend (FR1-FR13, NFR2, NFR3, NFR5, NFR7): example events, title suggestions, filters, the default condition, the result list, citation contexts, the candidate CSV, the paper detail and Citation Network links, the knowledge-graph subgraph, SPARQL counting and example queries, the matrix hash, and the data configuration. GET requests only, apart from two read-only SPARQL SELECT queries |
-| `verify_isolated_instance.py` | Checks availability and safe query access (NFR6, NFR8) on a separate local instance started without the evaluation set: citation search reports the missing set while other views respond, and modifying or oversized SPARQL queries are rejected. Refuses to run against a non-local host |
-| `inspect_code.py` | Inspects the source for NFR3, NFR4, NFR6, and NFR7: the example note, no GPU calls and precomputed seed vectors, background loading at start-up, and read-only, unauthenticated routes |
 
 ```bash
 python -I scripts/audit/audit_openalex.py eval_out/test_queries_1975.parquet audit_out
 python -I scripts/audit/audit_openalex_retry.py audit_out
 python -I scripts/audit/audit_semanticscholar.py eval_out/test_queries_1975.parquet audit_out/openalex_audit.csv audit_out 300
 python -I scripts/audit/leakage_subset.py eval_out audit_out/leakage
-python -I scripts/audit/verify_service.py http://localhost:8000 eval_out/reference_ranks.csv audit_out/service
-python -I scripts/audit/verify_requirements.py http://localhost:8000 audit_out/requirements 194
-python -I scripts/audit/verify_isolated_instance.py http://127.0.0.1:8010 audit_out/isolated
-python -I scripts/audit/inspect_code.py . audit_out/inspection
 ```
 
 `eval_out` is the output folder of `extract_candidates.py`; `reference_ranks.csv` has the columns
 `citation_event_id`, `rank_C1`, `rank_C2`, `rank_C3`.
+
+### Requirement verification
+
+`scripts/verification/` checks the implemented system against its functional and
+non-functional requirements (FR1-FR13, NFR1-NFR8), which are listed, with the standards they
+follow and the method used for each, in [docs/requirements.md](docs/requirements.md).
+
+| Script | Check |
+|--------|-------|
+| `verify_service.py` | Calls a deployed backend for every test event, compares the returned ranks with `reference_ranks.csv`, and records response times |
+| `verify_requirements.py` | Checks the requirements observable on a deployed backend (FR1-FR13, NFR2, NFR3, NFR5, NFR7): example events, title suggestions, filters, the default condition, the result list, citation contexts, the candidate CSV, the paper detail and Citation Network links, the knowledge-graph subgraph, SPARQL counting and example queries, the matrix hash, and the data configuration. GET requests only, apart from two read-only SPARQL SELECT queries |
+| `verify_isolated_instance.py` | Checks availability and safe query access (NFR6, NFR8) on a separate local instance started without the evaluation set: citation search reports the missing set while other views respond, and modifying or oversized SPARQL queries are rejected. Refuses to run against a non-local host |
+| `inspect_code.py` | Inspects the source for NFR3, NFR4, NFR6, and NFR7: the example note, no GPU calls and precomputed seed vectors, background loading at start-up, and read-only, unauthenticated routes |
+
+```bash
+python -I scripts/verification/verify_service.py http://localhost:8000 eval_out/reference_ranks.csv verification_out/service
+python -I scripts/verification/verify_requirements.py http://localhost:8000 verification_out/requirements 194
+python -I scripts/verification/verify_isolated_instance.py http://127.0.0.1:8010 verification_out/isolated
+python -I scripts/verification/inspect_code.py . verification_out/inspection
+```
+
+`verify_isolated_instance.py` sends modifying SPARQL queries and refuses to run against a host
+other than localhost.
 
 ### Index
 
@@ -239,9 +256,11 @@ CitationHub-Platform/
 │   ├── build_citation_search_index.py  # SciBERT vectors of all seed papers (Citation search)
 │   ├── check_conditions.py    # prints Citation search ranks/scores under C1, C2, C3
 │   ├── extract_candidates.py  # generates the Citation search evaluation set from IDCite
-│   └── audit/                 # ground-truth audit (OpenAlex, Semantic Scholar, leakage, service check)
+│   ├── audit/                 # ground-truth audit of the evaluation set (OpenAlex, Semantic Scholar, leakage)
+│   └── verification/          # verification of the requirements (see docs/requirements.md)
 ├── docs/
-│   └── evaluation-dataset.md  # how the evaluation set is derived and verified
+│   ├── evaluation-dataset.md  # how the evaluation set is derived and verified
+│   └── requirements.md        # functional and non-functional requirements and their verification
 ├── frontend/
 │   ├── pages/
 │   │   ├── index.jsx          # Home (stats + search bar)
